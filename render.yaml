@@ -1,0 +1,116 @@
+services:
+  # Main Eliza Agent Service
+  - type: web
+    name: eliza-agent
+    runtime: node
+    plan: starter # Change to standard or pro based on your needs
+    buildCommand: |
+      # Install pnpm globally
+      npm install -g pnpm@latest
+      # Install dependencies
+      pnpm install
+      # Build the project
+      pnpm build
+    startCommand: pnpm start
+    envVars:
+      # Core Configuration
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      
+      # OpenAI Configuration (if using OpenAI models)
+      - key: OPENAI_API_KEY
+        fromSecret: OPENAI_API_KEY
+      
+      # Anthropic Configuration (if using Claude models)
+      - key: ANTHROPIC_API_KEY
+        fromSecret: ANTHROPIC_API_KEY
+      
+      # Discord Configuration (if using Discord client)
+      - key: DISCORD_APPLICATION_ID
+        fromSecret: DISCORD_APPLICATION_ID
+      - key: DISCORD_API_TOKEN
+        fromSecret: DISCORD_API_TOKEN
+      
+      # Twitter/X Configuration (if using Twitter client)
+      - key: TWITTER_BEARER_TOKEN
+        fromSecret: TWITTER_BEARER_TOKEN
+      - key: TWITTER_USERNAME
+        fromSecret: TWITTER_USERNAME
+      - key: TWITTER_PASSWORD
+        fromSecret: TWITTER_PASSWORD
+      - key: TWITTER_EMAIL
+        fromSecret: TWITTER_EMAIL
+      - key: TWITTER_PHONE
+        fromSecret: TWITTER_PHONE
+      
+      # Telegram Configuration (if using Telegram client)
+      - key: TELEGRAM_BOT_TOKEN
+        fromSecret: TELEGRAM_BOT_TOKEN
+      
+      # Database Configuration (if using external database)
+      - key: DATABASE_URL
+        fromSecret: DATABASE_URL
+      
+      # Custom character configuration
+      - key: CHARACTER_PATH
+        value: "./characters/your-character.json"
+      
+      # Additional model configurations
+      - key: GROQ_API_KEY
+        fromSecret: GROQ_API_KEY
+      - key: GEMINI_API_KEY
+        fromSecret: GEMINI_API_KEY
+      - key: LLAMA_API_KEY
+        fromSecret: LLAMA_API_KEY
+    
+    # Health check endpoint
+    healthCheckPath: /health
+    
+    # Auto-deploy on git push
+    autoDeploy: true
+    
+    # Scaling configuration
+    scaling:
+      minInstances: 1
+      maxInstances: 3
+    
+    # Disk storage for persistent data
+    disk:
+      name: eliza-storage
+      mountPath: /app/data
+      sizeGB: 5
+
+  # Optional: Client Service (Web UI)
+  - type: web
+    name: eliza-client
+    runtime: node
+    plan: starter
+    buildCommand: |
+      npm install -g pnpm@latest
+      pnpm install
+      pnpm build:client || echo "No client build command found"
+    startCommand: pnpm start:client || node packages/client/dist/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10001
+      - key: ELIZA_AGENT_URL
+        value: https://eliza-agent.onrender.com
+    healthCheckPath: /
+    autoDeploy: true
+
+# Optional: Redis for caching and session management
+databases:
+  - name: eliza-redis
+    plan: starter
+    databaseName: eliza_cache
+    user: eliza_user
+
+# Optional: PostgreSQL for persistent storage
+  - name: eliza-postgres
+    plan: starter
+    databaseName: eliza_db
+    user: eliza_user
