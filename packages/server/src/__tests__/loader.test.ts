@@ -2,9 +2,8 @@
  * Unit tests for loader.ts
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach, Mock } from 'vitest';
+import { describe, it, expect, beforeEach, mock, afterEach } from 'bun:test';
 import fs from 'node:fs';
-import path from 'node:path';
 import {
   tryLoadFile,
   loadCharactersFromUrl,
@@ -16,46 +15,70 @@ import {
 } from '../loader';
 import { logger } from '@elizaos/core';
 
+const TEST_CHARACTER_URL =
+  'https://raw.githubusercontent.com/elizaOS/eliza/refs/heads/develop/packages/cli/tests/test-characters/shaw.json';
+
+const TEST_MULTI_CHARACTER_URL =
+  'https://raw.githubusercontent.com/elizaOS/eliza/refs/heads/develop/packages/cli/tests/test-characters/multi-chars.json';
+
 // Mock modules
-vi.mock('node:fs', () => ({
+mock.module('node:fs', () => ({
   default: {
-    readFileSync: vi.fn(),
+    readFileSync: mock.fn(),
     promises: {
-      mkdir: vi.fn(),
-      readdir: vi.fn(),
+      mkdir: mock.fn(),
+      readdir: mock.fn(),
     },
   },
-  readFileSync: vi.fn(),
+  readFileSync: mock.fn(),
   promises: {
-    mkdir: vi.fn(),
-    readdir: vi.fn(),
+    mkdir: mock.fn(),
+    readdir: mock.fn(),
   },
 }));
-vi.mock('@elizaos/core', async () => {
-  const actual = await vi.importActual('@elizaos/core');
+mock.module('@elizaos/core', async () => {
+  const actual = await import('@elizaos/core');
   return {
     ...actual,
     logger: {
-      info: vi.fn(),
-      error: vi.fn(),
-      warn: vi.fn(),
-      debug: vi.fn(),
+      info: mock.fn(),
+      error: mock.fn(),
+      warn: mock.fn(),
+      debug: mock.fn(),
     },
+    validateCharacter: mock.fn((character) => ({
+      success: true,
+      data: character,
+    })),
+    parseAndValidateCharacter: mock.fn((content) => {
+      try {
+        const parsed = JSON.parse(content);
+        return {
+          success: true,
+          data: parsed,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: { message: 'Invalid JSON' },
+        };
+      }
+    }),
   };
 });
 
 // Mock fetch globally
-const mockFetch = vi.fn();
+const mockFetch = mock.fn();
 global.fetch = mockFetch as any;
 
 describe('Loader Functions', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
     process.env = {};
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    mock.restore();
   });
 
   describe('tryLoadFile', () => {
@@ -106,7 +129,7 @@ describe('Loader Functions', () => {
         json: async () => mockCharacters,
       });
 
-      const result = await loadCharactersFromUrl('https://example.com/characters.json');
+      const result = await loadCharactersFromUrl(TEST_MULTI_CHARACTER_URL);
 
       expect(result).toHaveLength(2);
       expect(result[0].name).toBe('Character 1');
@@ -195,6 +218,31 @@ describe('Loader Functions', () => {
       expect(result.secrets).toEqual({
         API_KEY: 'secret-key',
       });
+    });
+
+    it('should not add settings property when character has no settings and no env settings', async () => {
+      const character = { name: 'Test Character', id: 'test-char' };
+      // No environment variables set for this character
+
+      const result = await jsonToCharacter(character);
+
+      expect(result).toEqual(character);
+      expect(result).not.toHaveProperty('settings');
+      expect(result).not.toHaveProperty('secrets');
+    });
+
+    it('should preserve existing settings when adding environment secrets', async () => {
+      const character = {
+        name: 'Test Character',
+        id: 'test-char',
+        settings: { existingSetting: 'value' },
+      };
+      process.env['CHARACTER.TEST-CHAR.API_KEY'] = 'secret-key';
+
+      const result = await jsonToCharacter(character);
+
+      expect(result.settings).toEqual({ existingSetting: 'value' });
+      expect(result.secrets).toEqual({ API_KEY: 'secret-key' });
     });
   });
 
@@ -295,7 +343,7 @@ describe('Loader Functions', () => {
 
   describe('hasValidRemoteUrls', () => {
     it('should return true for valid HTTP URLs', () => {
-      process.env.REMOTE_CHARACTER_URLS = 'https://example.com/char.json';
+      process.env.REMOTE_CHARACTER_URLS = TEST_CHARACTER_URL;
 
       expect(hasValidRemoteUrls()).toBe(true);
     });
@@ -346,8 +394,8 @@ describe('Loader Functions', () => {
       process.env.USE_CHARACTER_STORAGE = 'true';
       const char = { name: 'Storage Character', id: 'storage-1' };
 
-      (fs.promises.mkdir as any).mockResolvedValue(undefined);
-      (fs.promises.readdir as any).mockResolvedValue(['storage-char.json']);
+      (fs.promises.mkdir as any).mockReturnValue(Promise.resolve(undefined));
+      (fs.promises.readdir as any).mockReturnValue(Promise.resolve(['storage-char.json']));
       (fs.readFileSync as any).mockImplementation((path: string) => {
         if (path.includes('storage-char.json')) {
           return JSON.stringify(char);
@@ -364,7 +412,7 @@ describe('Loader Functions', () => {
     });
 
     it('should load remote characters when local paths fail', async () => {
-      process.env.REMOTE_CHARACTER_URLS = 'https://example.com/char.json';
+      process.env.REMOTE_CHARACTER_URLS = TEST_CHARACTER_URL;
       const remoteChar = { name: 'Remote Character', id: 'remote-1' };
 
       mockFetch.mockResolvedValueOnce({
@@ -384,7 +432,7 @@ describe('Loader Functions', () => {
       expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining("Failed to load character from 'non-existent.json'")
       );
-      expect(mockFetch).toHaveBeenCalledWith('https://example.com/char.json');
+      expect(mockFetch).toHaveBeenCalledWith(TEST_CHARACTER_URL);
     });
 
     it('should load from both local and remote sources', async () => {

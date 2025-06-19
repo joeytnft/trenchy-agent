@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'bun:test';
+import { mock, spyOn } from 'bun:test';
 import {
   createSettingFromConfig,
   getSalt,
@@ -26,32 +27,42 @@ import type {
   Character,
 } from '../types';
 
-// Mock dependencies
-vi.mock('../src/entities', () => ({
-  createUniqueUuid: vi.fn((runtime, serverId) => `world-${serverId}`),
-}));
+import * as entities from '../entities';
+import * as logger_module from '../logger';
 
-vi.mock('../src/logger', () => ({
-  logger: {
-    error: vi.fn(),
-    info: vi.fn(),
-    debug: vi.fn(),
-  },
-}));
+// Remove global module mocks - they interfere with other tests
 
 describe('settings utilities', () => {
   let mockRuntime: IAgentRuntime;
   let mockWorld: World;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
+
+    // Set up scoped mocks for this test
+    spyOn(entities, 'createUniqueUuid').mockImplementation(
+      (runtime, serverId) => `world-${serverId}`
+    );
+
+    // Mock logger if it doesn't have the methods
+    if (logger_module.logger) {
+      const methods = ['error', 'info', 'warn', 'debug'];
+      methods.forEach((method) => {
+        if (typeof logger_module.logger[method] === 'function') {
+          spyOn(logger_module.logger, method).mockImplementation(() => {});
+        } else {
+          logger_module.logger[method] = mock(() => {});
+        }
+      });
+    }
+
     // Mock process.env
     process.env.SECRET_SALT = 'test-salt-value';
 
     mockRuntime = {
       agentId: 'agent-123' as any,
-      getWorld: vi.fn(),
-      updateWorld: vi.fn(),
+      getWorld: mock(),
+      updateWorld: mock(),
     } as unknown as IAgentRuntime;
 
     mockWorld = {

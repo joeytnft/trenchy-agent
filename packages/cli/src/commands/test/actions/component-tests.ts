@@ -6,12 +6,13 @@ import path from 'node:path';
 import { ComponentTestOptions, TestResult } from '../types';
 import { processFilterName } from '../utils/project-utils';
 import { runTypeCheck } from '@/src/utils/testing/tsc-validator';
-import { createVitestConfig } from '../utils/vitest-config';
+// Bun test doesn't need separate config creation
+import { existsSync } from 'node:fs';
 
 /**
- * Run component tests using Vitest
+ * Run component tests using bun test
  *
- * Executes component tests for the project using Vitest as the test runner. Supports filtering by test name and can optionally skip the build step for faster iteration.
+ * Executes component tests for the project using bun test as the test runner. Supports filtering by test name and can optionally skip the build step for faster iteration.
  */
 export async function runComponentTests(
   testPath: string | undefined,
@@ -48,23 +49,11 @@ export async function runComponentTests(
 
   logger.info('Running component tests...');
 
-  // Create vitest config for proper isolation
-  const vitestConfig = createVitestConfig(
-    testPath || cwd,
-    isPlugin ? path.basename(cwd) : undefined
-  );
+  // Bun test uses built-in configuration
 
   return new Promise((resolve) => {
     // Build command arguments
-    const args = ['run', 'vitest', 'run', '--passWithNoTests', '--reporter=default'];
-
-    // Add config
-    if (vitestConfig.test?.include) {
-      args.push('--include', vitestConfig.test.include.join(','));
-    }
-    if (vitestConfig.test?.exclude) {
-      args.push('--exclude', vitestConfig.test.exclude.join(','));
-    }
+    const args = ['test', '--passWithNoTests'];
 
     // Add filter if specified
     if (options.name) {
@@ -76,6 +65,11 @@ export async function runComponentTests(
     }
 
     const targetPath = testPath ? path.resolve(process.cwd(), '..', testPath) : process.cwd();
+
+    // Bun test doesn't use separate config files
+
+    // Bun test automatically discovers test files
+
     logger.info(`Executing: bun ${args.join(' ')} in ${targetPath}`);
 
     // Use spawn for real-time output streaming
